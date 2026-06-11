@@ -261,7 +261,9 @@ impl InstanceStorage {
             .retain(|i| i.version_info.get_name() != version_info.get_name());
         self.instances.push(LocalInstance {
             version_info,
-            status: InstanceStatus::UpToDate,
+            // Generation only writes metadata; libraries/client/assets/mods are downloaded by
+            // the subsequent sync. Mark Outdated so that sync runs before launch is enabled.
+            status: InstanceStatus::Outdated,
             manifest_url: Some(pack_url),
             packwiz_index_hash: Some(index_hash),
             packwiz_auth_backend: auth_backend,
@@ -319,6 +321,17 @@ impl InstanceStorage {
     }
 
     pub async fn mark_downloaded(&mut self, config: &Config, version_name: &str) {
+        // Packwiz instances are locally generated; mark in place so the remote descriptor (also
+        // present in the manifest under the same name) never replaces the real version_info or
+        // drops the stored index hash / auth.
+        if let Some(instance) = self.instances.iter_mut().find(|i| {
+            i.version_info.get_name() == version_name && i.packwiz_index_hash.is_some()
+        }) {
+            instance.status = InstanceStatus::UpToDate;
+            self.safe_save(config).await;
+            return;
+        }
+
         let remote_versions = self.get_remote_versions();
         let remote_version = remote_versions
             .into_iter()
