@@ -4,6 +4,7 @@ pub mod generate;
 pub mod java;
 pub mod loader_generator;
 pub mod logs;
+pub mod packwiz;
 pub mod paths;
 pub mod progress;
 pub mod utils;

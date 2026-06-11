@@ -28,6 +28,19 @@ pub struct LocalInstance {
     pub version_info: VersionInfo,
     pub status: InstanceStatus,
     pub manifest_url: Option<String>,
+
+    /// For packwiz-sourced instances: the `pack.toml` `[index].hash` at generation time.
+    /// `Some(..)` is the canonical marker that this is a packwiz instance; `manifest_url`
+    /// then holds the `pack.toml` URL rather than a launcher version-manifest URL.
+    #[serde(default)]
+    pub packwiz_index_hash: Option<String>,
+
+    /// Auth backend / recommended Xmx the server set for this packwiz instance, persisted so
+    /// they survive regeneration on update (packwiz packs carry no auth/Xmx themselves).
+    #[serde(default)]
+    pub packwiz_auth_backend: Option<shared::version::extra_version_metadata::AuthBackend>,
+    #[serde(default)]
+    pub packwiz_recommended_xmx: Option<String>,
 }
 
 pub struct InstanceStorage {
@@ -225,6 +238,34 @@ impl InstanceStorage {
             version_info,
             status: InstanceStatus::Outdated,
             manifest_url: None,
+            packwiz_index_hash: None,
+            packwiz_auth_backend: None,
+            packwiz_recommended_xmx: None,
+        });
+        self.safe_save(config).await;
+    }
+
+    /// Register a freshly generated packwiz instance: `manifest_url` is the `pack.toml` URL
+    /// and `packwiz_index_hash` is its `[index].hash`. Auth/Xmx are persisted so they survive
+    /// regeneration on the next update.
+    pub async fn add_packwiz_instance(
+        &mut self,
+        config: &Config,
+        version_info: VersionInfo,
+        pack_url: String,
+        index_hash: String,
+        auth_backend: Option<shared::version::extra_version_metadata::AuthBackend>,
+        recommended_xmx: Option<String>,
+    ) {
+        self.instances
+            .retain(|i| i.version_info.get_name() != version_info.get_name());
+        self.instances.push(LocalInstance {
+            version_info,
+            status: InstanceStatus::UpToDate,
+            manifest_url: Some(pack_url),
+            packwiz_index_hash: Some(index_hash),
+            packwiz_auth_backend: auth_backend,
+            packwiz_recommended_xmx: recommended_xmx,
         });
         self.safe_save(config).await;
     }
@@ -235,6 +276,13 @@ impl InstanceStorage {
             .iter()
             .find(|instance| instance.version_info.get_name() == version_name)
             .cloned();
+        // Packwiz instances are not backed by a remote version manifest; their status is
+        // driven by the separate pack-index-hash check, so skip manifest classification.
+        if let Some(local_instance) = &local_instance
+            && local_instance.packwiz_index_hash.is_some()
+        {
+            return Some(local_instance.clone());
+        }
         if let Some(local_instance) = &local_instance
             && let Some(manifest_url) = self.remote_manifest_url.clone()
             && let Some(instance_manifest_url) = local_instance.manifest_url.clone()
@@ -260,6 +308,9 @@ impl InstanceStorage {
                     InstanceStatus::Missing
                 },
                 manifest_url: self.remote_manifest_url.clone(),
+                packwiz_index_hash: None,
+                packwiz_auth_backend: None,
+                packwiz_recommended_xmx: None,
             };
             Some(remote_instance)
         } else {
@@ -281,6 +332,9 @@ impl InstanceStorage {
                 version_info: remote_version,
                 status: InstanceStatus::UpToDate,
                 manifest_url: self.remote_manifest_url.clone(),
+                packwiz_index_hash: None,
+                packwiz_auth_backend: None,
+                packwiz_recommended_xmx: None,
             });
             self.safe_save(config).await;
         } else if let Some(instance) = self

@@ -3,6 +3,8 @@ use std::path::Path;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use super::extra_version_metadata::AuthBackend;
+
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct MetadataInfo {
     pub id: String,
@@ -23,9 +25,45 @@ pub struct VersionInfo {
 
     pub extra_metadata_url: Option<String>,
     pub extra_metadata_sha1: Option<String>,
+
+    /// When set, this manifest entry is a *descriptor* for a packwiz pack: the client fetches
+    /// the `pack.toml` at this URL and generates the instance locally (the other fields are
+    /// placeholders until generation). Propagated dynamically from the server's manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packwiz_url: Option<String>,
+
+    /// Auth backend the server wants this packwiz instance to use (packwiz packs carry no auth
+    /// info themselves). Applied to the generated instance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packwiz_auth_backend: Option<AuthBackend>,
+
+    /// Recommended `-Xmx` for this packwiz instance, set by the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packwiz_recommended_xmx: Option<String>,
 }
 
 impl VersionInfo {
+    /// A minimal manifest entry that points the client at a packwiz pack to generate locally.
+    pub fn packwiz_descriptor(
+        name: String,
+        packwiz_url: String,
+        auth_backend: Option<AuthBackend>,
+        recommended_xmx: Option<String>,
+    ) -> Self {
+        VersionInfo {
+            id: name.clone(),
+            url: String::new(),
+            sha1: String::new(),
+            name: Some(name),
+            inherits_from: vec![],
+            extra_metadata_url: None,
+            extra_metadata_sha1: None,
+            packwiz_url: Some(packwiz_url),
+            packwiz_auth_backend: auth_backend,
+            packwiz_recommended_xmx: recommended_xmx,
+        }
+    }
+
     pub fn get_name(&self) -> String {
         match &self.name {
             Some(name) => name.clone(),

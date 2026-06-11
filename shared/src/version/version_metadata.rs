@@ -175,6 +175,7 @@ impl Download {
         CheckEntry {
             url: self.url.clone(),
             remote_sha1: Some(self.sha1.clone()),
+            algo: files::HashAlgo::Sha1,
             path: path.to_path_buf(),
         }
     }
@@ -304,6 +305,7 @@ impl Library {
             Some(CheckEntry {
                 url: format!("{}/{}", self.get_url(), self.get_path_from_name()),
                 remote_sha1: self.sha1.clone(),
+                algo: files::HashAlgo::Sha1,
                 path: libraries_dir.join(self.get_path_from_name()),
             })
         }
@@ -455,6 +457,7 @@ impl VersionMetadata {
         CheckEntry {
             url,
             remote_sha1: Some(sha1),
+            algo: files::HashAlgo::Sha1,
             path,
         }
     }

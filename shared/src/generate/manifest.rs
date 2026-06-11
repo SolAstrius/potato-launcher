@@ -66,5 +66,8 @@ pub async fn get_version_info(
         inherits_from: metadata_info,
         extra_metadata_url,
         extra_metadata_sha1,
+        packwiz_url: None,
+        packwiz_auth_backend: None,
+        packwiz_recommended_xmx: None,
     })
 }

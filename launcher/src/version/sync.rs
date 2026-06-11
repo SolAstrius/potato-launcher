@@ -60,6 +60,7 @@ async fn get_objects_entries(
             check_entries.extend(objects.iter().map(|object| CheckEntry {
                 url: object.url.clone(),
                 remote_sha1: Some(object.sha1.clone()),
+                algo: object.algo,
                 path: minecraft_dir.join(&object.path),
             }));
         } else if rule.recursive
@@ -75,6 +76,7 @@ async fn get_objects_entries(
                     Some(CheckEntry {
                         url: object.url.clone(),
                         remote_sha1: Some(object.sha1.clone()),
+                        algo: object.algo,
                         path,
                     })
                 } else {
@@ -246,6 +248,7 @@ fn get_authlib_injector_entry(
         Some(CheckEntry {
             url: AUTHLIB_INJECTOR_URL.to_string(),
             remote_sha1: Some(AUTHLIB_INJECTOR_SHA1.to_string()),
+            algo: shared::files::HashAlgo::Sha1,
             path: get_authlib_injector_path(launcher_dir),
         })
     }

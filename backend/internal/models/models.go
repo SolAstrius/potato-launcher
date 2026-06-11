@@ -35,9 +35,12 @@ type IncludeRule struct {
 }
 
 type BuilderInstance struct {
-	Name             string        `json:"name"`
-	MinecraftVersion string        `json:"minecraft_version"`
-	LoaderName       LoaderType    `json:"loader_name"`
+	Name string `json:"name"`
+	// When set, this is a packwiz instance: the manifest carries the pack URL and the client
+	// generates locally. MinecraftVersion/loader/include are then unused.
+	PackwizURL       string        `json:"packwiz_url,omitempty"`
+	MinecraftVersion string        `json:"minecraft_version,omitempty"`
+	LoaderName       LoaderType    `json:"loader_name,omitempty"`
 	LoaderVersion    string        `json:"loader_version,omitempty"`
 	IncludeFrom      string        `json:"include_from,omitempty"`
 	Include          []IncludeRule `json:"include,omitempty"`

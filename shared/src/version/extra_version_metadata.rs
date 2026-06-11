@@ -3,14 +3,21 @@ use std::path::Path;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-use crate::{files::CheckEntry, paths::get_extra_metadata_path};
+use crate::{
+    files::{CheckEntry, HashAlgo},
+    paths::get_extra_metadata_path,
+};
 
 use super::{version_manifest::VersionInfo, version_metadata::Library};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Object {
     pub path: String,
+    /// Expected hash. Despite the field name this holds a digest in the algorithm given by
+    /// `algo` (SHA-1 for server-generated manifests, SHA-256/SHA-512 for packwiz packs).
     pub sha1: String,
+    #[serde(default)]
+    pub algo: HashAlgo,
     pub url: String,
 }
 
@@ -136,6 +143,7 @@ impl ExtraVersionMetadata {
         Some(CheckEntry {
             url: url.clone(),
             remote_sha1: Some(sha1.clone()),
+            algo: HashAlgo::Sha1,
             path: get_extra_metadata_path(versions_extra_dir, &version_info.get_name()),
         })
     }

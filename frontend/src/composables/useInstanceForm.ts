@@ -28,6 +28,7 @@ const buildIncludeRules = (source?: IncludeRule[]): IncludeRule[] => {
 
 const buildFormData = (source?: PartialInstanceBase): InstanceBase => ({
   name: source?.name ?? '',
+  packwiz_url: source?.packwiz_url ?? '',
   minecraft_version: source?.minecraft_version ?? '',
   loader_name: source?.loader_name ?? LoaderType.VANILLA,
   loader_version: source?.loader_version ?? '',
@@ -65,6 +66,7 @@ export const useInstanceForm = (options: UseInstanceFormOptions = {}) => {
   const resetFormData = (next?: PartialInstanceBase) => {
     const data = buildFormData(next);
     formData.name = data.name;
+    formData.packwiz_url = data.packwiz_url;
     formData.minecraft_version = data.minecraft_version;
     formData.loader_name = data.loader_name;
     formData.loader_version = data.loader_version;

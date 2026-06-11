@@ -1,5 +1,7 @@
 use futures::stream::{FuturesUnordered, StreamExt};
-use sha1::{Digest, Sha1};
+use serde::{Deserialize, Serialize};
+use sha1::Sha1;
+use sha2::{Digest, Sha256, Sha512};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,6 +11,20 @@ use tokio::{fs, io};
 use walkdir::WalkDir;
 
 use crate::progress::{run_tasks_with_progress, ProgressBar};
+
+/// Hash algorithm used to verify a downloaded file.
+///
+/// Server-generated manifests and Mojang/loader metadata are all SHA-1, which is the default
+/// so existing JSON (where the field is absent) keeps deserializing unchanged. packwiz packs
+/// use SHA-256 (index + loose files) and SHA-512 (mod jars).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum HashAlgo {
+    #[default]
+    Sha1,
+    Sha256,
+    Sha512,
+}
 
 pub fn get_files_in_dir(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -42,31 +58,63 @@ pub fn get_files_ignore_paths(
     Ok(files)
 }
 
+/// Hash a file with SHA-1. Thin wrapper kept for the many existing callers.
 pub async fn hash_file(path: &Path) -> anyhow::Result<String> {
+    hash_file_algo(path, HashAlgo::Sha1).await
+}
+
+/// Hash a file with the given algorithm, returning the lowercase hex digest.
+pub async fn hash_file_algo(path: &Path, algo: HashAlgo) -> anyhow::Result<String> {
     let mut file = fs::File::open(path).await?;
-    let mut hasher = Sha1::new();
     let mut buffer = [0; 1024];
 
-    loop {
-        let n = file.read(&mut buffer).await?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
+    macro_rules! hash_with {
+        ($hasher:expr) => {{
+            let mut hasher = $hasher;
+            loop {
+                let n = file.read(&mut buffer).await?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..n]);
+            }
+            format!("{:x}", hasher.finalize())
+        }};
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(match algo {
+        HashAlgo::Sha1 => hash_with!(Sha1::new()),
+        HashAlgo::Sha256 => hash_with!(Sha256::new()),
+        HashAlgo::Sha512 => hash_with!(Sha512::new()),
+    })
+}
+
+/// Hash an in-memory buffer with the given algorithm, returning the lowercase hex digest.
+pub fn hash_bytes(bytes: &[u8], algo: HashAlgo) -> String {
+    match algo {
+        HashAlgo::Sha1 => format!("{:x}", Sha1::digest(bytes)),
+        HashAlgo::Sha256 => format!("{:x}", Sha256::digest(bytes)),
+        HashAlgo::Sha512 => format!("{:x}", Sha512::digest(bytes)),
+    }
 }
 
 pub async fn hash_files<M>(
     files: Vec<PathBuf>,
     progress_bar: Arc<dyn ProgressBar<M> + Send + Sync>,
 ) -> anyhow::Result<Vec<String>> {
+    hash_files_algo(files, HashAlgo::Sha1, progress_bar).await
+}
+
+pub async fn hash_files_algo<M>(
+    files: Vec<PathBuf>,
+    algo: HashAlgo,
+    progress_bar: Arc<dyn ProgressBar<M> + Send + Sync>,
+) -> anyhow::Result<Vec<String>> {
     let tasks_count = files.len() as u64;
 
     let tasks = files
         .into_iter()
-        .map(|path| async move { hash_file(&path).await });
+        .map(|path| async move { hash_file_algo(&path, algo).await });
 
     run_tasks_with_progress(tasks, progress_bar, tasks_count, num_cpus::get()).await
 }
@@ -89,7 +137,10 @@ pub struct DownloadEntry {
 #[derive(Debug)]
 pub struct CheckEntry {
     pub url: String,
+    /// Expected remote hash. Despite the field name this holds a digest in the algorithm given
+    /// by `algo` (SHA-1 for manifests/Mojang metadata, SHA-256/SHA-512 for packwiz files).
     pub remote_sha1: Option<String>,
+    pub algo: HashAlgo,
     pub path: PathBuf,
 }
 
@@ -103,19 +154,23 @@ pub async fn get_download_entries<M>(
     check_entries: Vec<CheckEntry>,
     progress_bar: Arc<dyn ProgressBar<M> + Send + Sync>,
 ) -> anyhow::Result<Vec<DownloadEntry>> {
-    let to_hash: Vec<_> = check_entries
-        .iter()
-        .filter_map(|entry| {
-            if entry.path.is_file() && entry.remote_sha1.is_some() {
-                Some(entry.path.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
+    // Group the files that need hashing by their algorithm, since packwiz mixes SHA-256
+    // (loose files) and SHA-512 (mod jars) with the SHA-1 used everywhere else.
+    let mut to_hash_by_algo: HashMap<HashAlgo, Vec<PathBuf>> = HashMap::new();
+    for entry in &check_entries {
+        if entry.path.is_file() && entry.remote_sha1.is_some() {
+            to_hash_by_algo
+                .entry(entry.algo)
+                .or_default()
+                .push(entry.path.clone());
+        }
+    }
 
-    let hashes = hash_files(to_hash.clone(), progress_bar.clone()).await?;
-    let hashes = to_hash.into_iter().zip(hashes).collect::<HashMap<_, _>>();
+    let mut hashes: HashMap<PathBuf, String> = HashMap::new();
+    for (algo, paths) in to_hash_by_algo {
+        let group = hash_files_algo(paths.clone(), algo, progress_bar.clone()).await?;
+        hashes.extend(paths.into_iter().zip(group));
+    }
 
     let mut download_entries = HashMap::new();
     for entry in check_entries {
@@ -326,5 +381,79 @@ mod tests {
 
         fs::remove_dir_all(&source_dir).await.unwrap();
         fs::remove_dir_all(&target_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_download_entries_multi_algo() {
+        let dir = env::temp_dir().join("files_multi_algo_test");
+        let _ = fs::remove_dir_all(&dir).await;
+        fs::create_dir_all(&dir).await.unwrap();
+
+        let f1 = dir.join("a");
+        let f2 = dir.join("b");
+        let f3 = dir.join("c");
+        fs::write(&f1, "alpha").await.unwrap();
+        fs::write(&f2, "beta").await.unwrap();
+        fs::write(&f3, "gamma").await.unwrap();
+
+        // Build entries whose expected hash is the file's correct digest under its own algorithm.
+        let mut entries = vec![
+            CheckEntry {
+                url: "http://example/a".into(),
+                remote_sha1: Some(hash_file_algo(&f1, HashAlgo::Sha1).await.unwrap()),
+                algo: HashAlgo::Sha1,
+                path: f1.clone(),
+            },
+            CheckEntry {
+                url: "http://example/b".into(),
+                remote_sha1: Some(hash_file_algo(&f2, HashAlgo::Sha256).await.unwrap()),
+                algo: HashAlgo::Sha256,
+                path: f2.clone(),
+            },
+            CheckEntry {
+                url: "http://example/c".into(),
+                remote_sha1: Some(hash_file_algo(&f3, HashAlgo::Sha512).await.unwrap()),
+                algo: HashAlgo::Sha512,
+                path: f3.clone(),
+            },
+        ];
+
+        // All present and matching under their own algorithm => nothing to download.
+        let to_download = get_download_entries(entries, crate::progress::no_progress_bar())
+            .await
+            .unwrap();
+        assert!(
+            to_download.is_empty(),
+            "expected no downloads, got {to_download:?}"
+        );
+
+        // Corrupt the expected hash of the SHA-512 entry => exactly that one re-downloads.
+        entries = vec![
+            CheckEntry {
+                url: "http://example/a".into(),
+                remote_sha1: Some(hash_file_algo(&f1, HashAlgo::Sha1).await.unwrap()),
+                algo: HashAlgo::Sha1,
+                path: f1.clone(),
+            },
+            CheckEntry {
+                url: "http://example/b".into(),
+                remote_sha1: Some(hash_file_algo(&f2, HashAlgo::Sha256).await.unwrap()),
+                algo: HashAlgo::Sha256,
+                path: f2.clone(),
+            },
+            CheckEntry {
+                url: "http://example/c".into(),
+                remote_sha1: Some("deadbeef".into()),
+                algo: HashAlgo::Sha512,
+                path: f3.clone(),
+            },
+        ];
+        let to_download = get_download_entries(entries, crate::progress::no_progress_bar())
+            .await
+            .unwrap();
+        assert_eq!(to_download.len(), 1);
+        assert_eq!(to_download[0].path, f3);
+
+        fs::remove_dir_all(&dir).await.unwrap();
     }
 }

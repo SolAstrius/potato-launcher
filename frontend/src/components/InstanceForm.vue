@@ -36,13 +36,19 @@ const {
 const loading = ref(false);
 const errors = reactive<Record<string, string>>({});
 
+const isPackwiz = () => !!formData.packwiz_url?.trim();
+
 const validate = () => {
   const newErrors: Record<string, string> = {};
   if (!formData.name.trim()) newErrors.name = 'Name is required';
-  if (!formData.minecraft_version) newErrors.minecraft_version = 'Minecraft version is required';
-  if (!formData.loader_name) newErrors.loader_name = 'Loader is required';
-  if (formData.loader_name !== LoaderType.VANILLA && !formData.loader_version) {
-    newErrors.loader_version = 'Loader version is required';
+
+  // Packwiz instances pull version/loader/mods from the pack; only auth still applies.
+  if (!isPackwiz()) {
+    if (!formData.minecraft_version) newErrors.minecraft_version = 'Minecraft version is required';
+    if (!formData.loader_name) newErrors.loader_name = 'Loader is required';
+    if (formData.loader_name !== LoaderType.VANILLA && !formData.loader_version) {
+      newErrors.loader_version = 'Loader version is required';
+    }
   }
   if (!formData.auth_backend.type) newErrors.auth_type = 'Authentication type is required';
 
@@ -76,14 +82,26 @@ const handleSubmit = async () => {
 
   try {
     loading.value = true;
-    const payload: InstanceBase = {
-      ...formData,
-      auth_backend: { ...formData.auth_backend },
-      include: formData.include?.map(rule => ({ ...rule })),
-    };
-
-    if (payload.loader_name === LoaderType.VANILLA) {
-      delete payload.loader_version;
+    let payload: InstanceBase;
+    if (isPackwiz()) {
+      // Send only what a packwiz instance needs; the backend ignores the rest anyway.
+      payload = {
+        name: formData.name,
+        packwiz_url: formData.packwiz_url?.trim(),
+        minecraft_version: '',
+        loader_name: LoaderType.VANILLA,
+        recommended_xmx: formData.recommended_xmx,
+        auth_backend: { ...formData.auth_backend },
+      };
+    } else {
+      payload = {
+        ...formData,
+        auth_backend: { ...formData.auth_backend },
+        include: formData.include?.map(rule => ({ ...rule })),
+      };
+      if (payload.loader_name === LoaderType.VANILLA) {
+        delete payload.loader_version;
+      }
     }
 
     await apiService.createInstance(payload);

@@ -26,6 +26,7 @@ type EditableFields = InstanceBase;
 
 const toEditableFields = (instance: InstanceResponse): EditableFields => ({
   name: instance.name,
+  packwiz_url: instance.packwiz_url,
   minecraft_version: instance.minecraft_version,
   loader_name: instance.loader_name,
   loader_version: instance.loader_version,
@@ -94,14 +95,25 @@ const handleCancel = () => {
 const handleUpdate = async () => {
   updating.value = true;
   try {
-    const payload: InstanceBase = {
-      ...editData,
-      auth_backend: { ...editData.auth_backend },
-      include: editData.include?.map(rule => ({ ...rule })),
-    };
-
-    if (payload.loader_name === LoaderType.VANILLA) {
-      delete payload.loader_version;
+    let payload: InstanceBase;
+    if (editData.packwiz_url?.trim()) {
+      payload = {
+        name: editData.name,
+        packwiz_url: editData.packwiz_url.trim(),
+        minecraft_version: '',
+        loader_name: LoaderType.VANILLA,
+        recommended_xmx: editData.recommended_xmx,
+        auth_backend: { ...editData.auth_backend },
+      };
+    } else {
+      payload = {
+        ...editData,
+        auth_backend: { ...editData.auth_backend },
+        include: editData.include?.map(rule => ({ ...rule })),
+      };
+      if (payload.loader_name === LoaderType.VANILLA) {
+        delete payload.loader_version;
+      }
     }
 
     const updated = await apiService.updateInstance(props.instance.name, payload);
@@ -178,18 +190,24 @@ const filebrowserUrl = computed(() => `/filebrowser/files/${props.instance.name}
         </template>
         <template v-else>
           <dl class="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt class="text-sm">Minecraft Version</dt>
-              <dd class="text-sm font-medium">{{ props.instance.minecraft_version }}</dd>
+            <div v-if="props.instance.packwiz_url" class="sm:col-span-2">
+              <dt class="text-sm">Packwiz Pack</dt>
+              <dd class="text-sm font-medium wrap-break-word">{{ props.instance.packwiz_url }}</dd>
             </div>
-            <div>
-              <dt class="text-sm">Mod Loader</dt>
-              <dd class="text-sm font-medium capitalize">{{ props.instance.loader_name }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm">Loader Version</dt>
-              <dd class="text-sm font-medium">{{ props.instance.loader_version }}</dd>
-            </div>
+            <template v-else>
+              <div>
+                <dt class="text-sm">Minecraft Version</dt>
+                <dd class="text-sm font-medium">{{ props.instance.minecraft_version }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm">Mod Loader</dt>
+                <dd class="text-sm font-medium capitalize">{{ props.instance.loader_name }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm">Loader Version</dt>
+                <dd class="text-sm font-medium">{{ props.instance.loader_version }}</dd>
+              </div>
+            </template>
             <div>
               <dt class="text-sm">Authentication Type</dt>
               <dd class="text-sm font-medium capitalize">{{ authTypeLabel }}</dd>

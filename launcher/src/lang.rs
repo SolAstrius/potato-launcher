@@ -86,6 +86,8 @@ pub enum LangMessage {
     InstanceGenerateErrorOffline,
     InstanceGenerateError,
     LongTimeWarning,
+    PackwizProvisioning,
+    PackwizInstanceError(String),
     DeleteInstance,
     SelectInstanceToDelete,
     ConfirmDelete,
@@ -410,6 +412,14 @@ impl LangMessage {
             LangMessage::LongTimeWarning => match lang {
                 Lang::English => "This may take a couple of minutes".to_string(),
                 Lang::Russian => "Это может занять несколько минут".to_string(),
+            },
+            LangMessage::PackwizProvisioning => match lang {
+                Lang::English => "Preparing packwiz pack...".to_string(),
+                Lang::Russian => "Подготовка packwiz-сборки...".to_string(),
+            },
+            LangMessage::PackwizInstanceError(e) => match lang {
+                Lang::English => format!("Error creating packwiz instance: {e}"),
+                Lang::Russian => format!("Ошибка создания packwiz-версии: {e}"),
             },
             LangMessage::DeleteInstance => match lang {
                 Lang::English => "Delete instance".to_string(),

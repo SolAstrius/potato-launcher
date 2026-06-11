@@ -22,6 +22,7 @@ func applySettingsToSpec(spec *models.BuilderSpec, settings APISettings) {
 func toAPIInstance(v models.BuilderInstance) APIInstance {
 	return APIInstance{
 		Name:             v.Name,
+		PackwizURL:       v.PackwizURL,
 		MinecraftVersion: v.MinecraftVersion,
 		LoaderName:       v.LoaderName,
 		LoaderVersion:    v.LoaderVersion,
@@ -55,6 +56,19 @@ func normalizeInstance(cfg *config.Config, instance *models.BuilderInstance) err
 	if instance.Name == "" {
 		return NewValidationError("name", "name is required")
 	}
+
+	// Packwiz instance: only a pack URL is needed; the client pulls minecraft version, loader,
+	// mods and configs from the pack itself.
+	instance.PackwizURL = strings.TrimSpace(instance.PackwizURL)
+	if instance.PackwizURL != "" {
+		instance.MinecraftVersion = ""
+		instance.LoaderName = ""
+		instance.LoaderVersion = ""
+		instance.Include = nil
+		instance.IncludeFrom = ""
+		return nil
+	}
+
 	instance.MinecraftVersion = strings.TrimSpace(instance.MinecraftVersion)
 	if instance.MinecraftVersion == "" {
 		return NewValidationError("minecraft_version", "minecraft_version is required")
@@ -74,6 +88,7 @@ func normalizeInstance(cfg *config.Config, instance *models.BuilderInstance) err
 func toBuilderInstance(cfg *config.Config, m APIInstance) (*models.BuilderInstance, error) {
 	instance := models.BuilderInstance{
 		Name:             m.Name,
+		PackwizURL:       m.PackwizURL,
 		MinecraftVersion: m.MinecraftVersion,
 		LoaderName:       m.LoaderName,
 		LoaderVersion:    m.LoaderVersion,

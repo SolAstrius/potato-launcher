@@ -49,6 +49,7 @@ impl AssetsMetadata {
         let check_entry = CheckEntry {
             url: asset_index.url.clone(),
             remote_sha1: Some(asset_index.sha1.clone()),
+            algo: files::HashAlgo::Sha1,
             path: asset_index_path.clone(),
         };
         let check_entries = vec![check_entry];
@@ -83,6 +84,7 @@ impl AssetsMetadata {
                 } else {
                     None
                 },
+                algo: files::HashAlgo::Sha1,
             }
         }));
 

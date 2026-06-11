@@ -43,6 +43,13 @@ fn vanilla() -> String {
 #[derive(Deserialize)]
 pub struct Instances {
     pub name: String,
+
+    /// When set, this instance is a packwiz pack: the manifest carries the pack URL and the
+    /// client generates the instance locally. `minecraft_version`/loader/include are ignored.
+    #[serde(default)]
+    pub packwiz_url: Option<String>,
+
+    #[serde(default)]
     pub minecraft_version: String,
 
     #[serde(default = "vanilla")]
@@ -149,6 +156,27 @@ impl Spec {
         for version in self.instances {
             if let Some(command) = &version.exec_before {
                 exec_string_command(command).await?;
+            }
+
+            // Packwiz instance: emit a descriptor entry; the client generates locally.
+            if let Some(packwiz_url) = &version.packwiz_url {
+                info!("Adding packwiz instance {} -> {}", version.name, packwiz_url);
+                let version_info = shared::version::version_manifest::VersionInfo::packwiz_descriptor(
+                    version.name.clone(),
+                    packwiz_url.clone(),
+                    version.auth_backend.clone(),
+                    version.recommended_xmx.clone(),
+                );
+                version_manifest
+                    .versions
+                    .retain(|v| v.get_name() != version_info.get_name());
+                version_manifest.versions.push(version_info);
+
+                if let Some(command) = &version.exec_after {
+                    exec_string_command(command).await?;
+                }
+                info!("Finished adding packwiz instance {}", &version.name);
+                continue;
             }
 
             let vanilla_version_info =

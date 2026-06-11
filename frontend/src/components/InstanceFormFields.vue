@@ -41,6 +41,7 @@ const emit = defineEmits<{
 }>();
 
 const isVanillaLoader = computed(() => props.formData.loader_name === LoaderType.VANILLA);
+const isPackwiz = computed(() => !!props.formData.packwiz_url?.trim());
 </script>
 
 <template>
@@ -56,6 +57,22 @@ const isVanillaLoader = computed(() => props.formData.loader_name === LoaderType
                         {{ props.errors.name }}
                     </p>
                 </div>
+                <div class="space-y-2 sm:col-span-2">
+                    <Label :for="`${props.idPrefix}-packwiz-url`">Packwiz pack URL</Label>
+                    <Input :id="`${props.idPrefix}-packwiz-url`" type="url"
+                        :model-value="props.formData.packwiz_url || ''" :disabled="props.disabled"
+                        placeholder="https://your.server/pack/pack.toml"
+                        @update:modelValue="(value) => emit('update-field', 'packwiz_url', value?.toString() ?? '')" />
+                    <p v-if="props.errors?.packwiz_url" class="text-sm text-destructive">
+                        {{ props.errors.packwiz_url }}
+                    </p>
+                    <p v-else class="text-sm text-muted-foreground">
+                        Optional. If set, the client builds this instance from the packwiz pack
+                        (Minecraft version, loader, mods and configs come from the pack) and keeps it
+                        up to date automatically. The fields below are then ignored.
+                    </p>
+                </div>
+                <template v-if="!isPackwiz">
                 <div class="space-y-2">
                     <Label>Minecraft Version *</Label>
                     <Select :model-value="props.formData.minecraft_version || undefined"
@@ -137,6 +154,7 @@ const isVanillaLoader = computed(() => props.formData.loader_name === LoaderType
                         No versions available.
                     </p>
                 </div>
+                </template>
                 <div class="space-y-2">
                     <Label>Authentication Type *</Label>
                     <Select :model-value="props.formData.auth_backend.type" :disabled="props.disabled"
@@ -202,7 +220,7 @@ const isVanillaLoader = computed(() => props.formData.loader_name === LoaderType
             </div>
         </div>
 
-        <div class="space-y-4">
+        <div v-if="!isPackwiz" class="space-y-4">
             <div class="flex items-center justify-between">
                 <Label>Include Rules</Label>
                 <Button type="button" variant="outline" size="sm" class="gap-2" :disabled="props.disabled"

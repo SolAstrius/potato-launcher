@@ -28,6 +28,8 @@ export interface IncludeRule {
 
 export interface InstanceResponse {
   name: string;
+  /** If set, a packwiz pack the client generates locally; version/loader/include are unused. */
+  packwiz_url?: string;
   minecraft_version: string;
   loader_name: LoaderType;
   loader_version?: string;
@@ -38,6 +40,8 @@ export interface InstanceResponse {
 
 export interface InstanceBase {
   name: string;
+  /** If set, a packwiz pack the client generates locally; version/loader/include are unused. */
+  packwiz_url?: string;
   minecraft_version: string;
   loader_name: LoaderType;
   loader_version?: string;

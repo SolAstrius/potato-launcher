@@ -12,8 +12,10 @@ use super::launch_state::RenderUiParams;
 use super::manifest_state::ManifestState;
 use super::metadata_state::MetadataState;
 use super::new_instance_state::NewInstanceState;
+use super::packwiz_provision_state::{self, PackwizProvisionState};
 use super::settings::SettingsState;
 use crate::config::runtime_config::Config;
+use crate::lang::LangMessage;
 use crate::utils;
 use crate::version::instance_storage::InstanceStatus;
 use crate::version::instance_storage::InstanceStorage;
@@ -35,6 +37,7 @@ pub struct LauncherApp {
     instance_sync_state: InstanceSyncState,
     launch_state: LaunchState,
     new_instance_state: NewInstanceState,
+    packwiz_provision_state: PackwizProvisionState,
 }
 
 impl eframe::App for LauncherApp {
@@ -60,6 +63,7 @@ impl LauncherApp {
             instance_sync_state: InstanceSyncState::new(ctx),
             launch_state: LaunchState::new(launch, ctx.clone()),
             new_instance_state: NewInstanceState::new(&runtime, ctx),
+            packwiz_provision_state: PackwizProvisionState::new(),
             instance_storage: runtime.block_on(InstanceStorage::load(&config)),
             config,
             runtime,
@@ -122,6 +126,11 @@ impl LauncherApp {
 
     fn set_metadata_task(&mut self, ctx: &egui::Context) {
         if let Some(selected_instance) = self.get_selected_instance(&self.config) {
+            // A packwiz descriptor has placeholder URLs until it is generated locally; loading
+            // metadata is deferred until provisioning replaces it with the real instance.
+            if packwiz_provision_state::needs_provisioning(&selected_instance) {
+                return;
+            }
             self.metadata_state.set_metadata_task(
                 &self.runtime,
                 &self.config,
@@ -137,6 +146,8 @@ impl LauncherApp {
             self.instance_sync_state.cancel_sync();
             let url = self.config.get_effective_version_manifest_url();
             self.instance_storage.set_remote_manifest(manifest, url);
+            // A fresh manifest may carry updated packwiz pack URLs: re-check on next selection.
+            self.packwiz_provision_state.invalidate_all();
         }
         if updated {
             let (local_instance_names, remote_instance_names) = self
@@ -154,6 +165,25 @@ impl LauncherApp {
                 self.config.selected_instance_name = None;
                 self.config.save();
             }
+            self.set_metadata_task(ctx);
+        }
+
+        // Drive packwiz provisioning / update-detection for the selected instance: fetch the
+        // pack and (re)generate locally if the pack changed or was never generated here.
+        if let Some(selected) = self.get_selected_instance(&self.config)
+            && packwiz_provision_state::is_packwiz(&selected)
+        {
+            self.packwiz_provision_state
+                .maybe_start(&self.runtime, &self.config, &selected, ctx);
+        }
+        if self.packwiz_provision_state.update(
+            &self.runtime,
+            &self.config,
+            &mut self.instance_storage,
+        ) {
+            // Newly (re)generated: drop stale cached metadata and reload from the new instance.
+            self.metadata_state.clear();
+            self.instance_sync_state.reset_status();
             self.set_metadata_task(ctx);
         }
 
@@ -216,7 +246,11 @@ impl LauncherApp {
         self.auth_state.update(&self.runtime, &mut self.config);
 
         ui.vertical_centered(|ui| {
-            if !self.metadata_state.render_status(ui, &self.config) {
+            if self.packwiz_provision_state.is_working() {
+                ui.label(LangMessage::PackwizProvisioning.to_string(self.config.lang));
+            } else if let Some(e) = self.packwiz_provision_state.last_error() {
+                ui.label(LangMessage::PackwizInstanceError(e.to_string()).to_string(self.config.lang));
+            } else if !self.metadata_state.render_status(ui, &self.config) {
                 self.instance_sync_state.render_status(ui, &self.config);
             }
             let selected_instance = self.metadata_state.get_version_metadata(&self.config);

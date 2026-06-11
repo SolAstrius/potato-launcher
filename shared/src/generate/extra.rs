@@ -41,6 +41,7 @@ async fn get_objects(
         objects.push(Object {
             path: rel_path.to_string_lossy().to_string().replace('\\', "/"),
             sha1: hash.clone(),
+            algo: crate::files::HashAlgo::Sha1,
             url,
         });
     }
