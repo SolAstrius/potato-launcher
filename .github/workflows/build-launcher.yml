@@ -147,47 +147,6 @@ jobs:
             echo "$VERSION" > build/version_macos.txt
           fi
 
-      - name: Upload launcher artifacts via backend API
-        if: ${{ env.UPLOAD_LAUNCHERS }}
-        env:
-          BACKEND_API_BASE: ${{ vars.BACKEND_API_BASE }}
-          ADMIN_SECRET_TOKEN: ${{ secrets.ADMIN_SECRET_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          echo "Logging in to get admin JWT..."
-          AUTH_JSON="$(curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/auth/login" \
-            -H 'Content-Type: application/json' \
-            --data "{\"token\":\"$ADMIN_SECRET_TOKEN\"}")"
-          TOKEN="$(echo "$AUTH_JSON" | jq -r '.access_token // empty')"
-          if [ -z "$TOKEN" ]; then
-            echo "Failed to get access token from login response"
-            echo "$AUTH_JSON"
-            exit 1
-          fi
-
-          echo "Uploading artifacts for ${{ matrix.os }} version=$VERSION"
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/launchers/windows/exe?version=$VERSION" \
-              -H "Authorization: Bearer $TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"build/${LAUNCHER_NAME}.exe"
-          elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/launchers/linux/bin?version=$VERSION" \
-              -H "Authorization: Bearer $TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"build/${LOWER_LAUNCHER_NAME}"
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/launchers/macos/dmg?version=$VERSION" \
-              -H "Authorization: Bearer $TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"build/${LAUNCHER_NAME}.dmg"
-            curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/launchers/macos/archive?version=$VERSION" \
-              -H "Authorization: Bearer $TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"build/${LOWER_LAUNCHER_NAME}_macos.tar.gz"
-          fi
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -280,42 +239,3 @@ jobs:
           arch: x86_64
           gpg-sign: ${{ steps.gpg.outputs.fingerprint }}
           upload-bundles: true
-
-      - name: Upload Flatpak artifacts via backend API
-        if: ${{ env.UPLOAD_LAUNCHERS }}
-        env:
-          BACKEND_API_BASE: ${{ vars.BACKEND_API_BASE }}
-          ADMIN_SECRET_TOKEN: ${{ secrets.ADMIN_SECRET_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          echo "Logging in to get admin JWT..."
-          AUTH_JSON="$(curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/auth/login" \
-            -H 'Content-Type: application/json' \
-            --data "{\"token\":\"$ADMIN_SECRET_TOKEN\"}")"
-          TOKEN="$(echo "$AUTH_JSON" | jq -r '.access_token // empty')"
-          if [ -z "$TOKEN" ]; then
-            echo "Failed to get access token from login response"
-            echo "$AUTH_JSON"
-            exit 1
-          fi
-
-          VERSION="${GITHUB_SHA}"
-
-          FLATPAK_FILE="$(ls -1 *.flatpak | head -n 1 || true)"
-          if [ -z "$FLATPAK_FILE" ]; then
-            echo "No .flatpak found to upload"
-            exit 1
-          fi
-          curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/launchers/linux/flatpak?version=$VERSION" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$FLATPAK_FILE"
-
-          FLATPAKREF_FILE="$(ls -1 packaging/flatpak/*.flatpakref 2>/dev/null | head -n 1 || true)"
-          if [ -n "$FLATPAKREF_FILE" ]; then
-            curl -sS --fail-with-body -X POST "$BACKEND_API_BASE/launchers/linux/flatpakref?version=$VERSION" \
-              -H "Authorization: Bearer $TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$FLATPAKREF_FILE"
-          fi
