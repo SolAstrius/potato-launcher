@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
+    println!("cargo:rerun-if-changed=../build.env");
     let dotenv_path = Path::new("../build.env");
     let dotenv_contents = if dotenv_path.exists() {
         let contents = fs::read_to_string(dotenv_path).unwrap();
