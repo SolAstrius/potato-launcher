@@ -109,6 +109,12 @@ impl LaunchState {
         }
     }
 
+    /// True when the user has armed the single action button ("Download and Launch") or the
+    /// `--launch` flag is set: the app should drive provisioning → sync → java → launch.
+    pub fn wants_launch(&self) -> bool {
+        self.force_launch || self.launch_from_start
+    }
+
     pub fn update(&mut self, runtime: &Runtime, config: &Config) {
         match self.watcher_handle.take_if(|handle| handle.is_finished()) {
             None => {}

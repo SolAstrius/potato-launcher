@@ -324,9 +324,11 @@ impl InstanceStorage {
         // Packwiz instances are locally generated; mark in place so the remote descriptor (also
         // present in the manifest under the same name) never replaces the real version_info or
         // drops the stored index hash / auth.
-        if let Some(instance) = self.instances.iter_mut().find(|i| {
-            i.version_info.get_name() == version_name && i.packwiz_index_hash.is_some()
-        }) {
+        if let Some(instance) = self
+            .instances
+            .iter_mut()
+            .find(|i| i.version_info.get_name() == version_name && i.packwiz_index_hash.is_some())
+        {
             instance.status = InstanceStatus::UpToDate;
             self.safe_save(config).await;
             return;

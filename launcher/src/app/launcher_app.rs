@@ -168,14 +168,8 @@ impl LauncherApp {
             self.set_metadata_task(ctx);
         }
 
-        // Drive packwiz provisioning / update-detection for the selected instance: fetch the
-        // pack and (re)generate locally if the pack changed or was never generated here.
-        if let Some(selected) = self.get_selected_instance(&self.config)
-            && packwiz_provision_state::is_packwiz(&selected)
-        {
-            self.packwiz_provision_state
-                .maybe_start(&self.runtime, &self.config, &selected, ctx);
-        }
+        // Provisioning (generation) is heavy (JDK + loader installer), so it is NOT run on mere
+        // selection — it is driven by the single action button via `wants_launch()` below.
         if self.packwiz_provision_state.update(
             &self.runtime,
             &self.config,
@@ -318,6 +312,24 @@ impl LauncherApp {
 
                 self.java_state
                     .update(&self.runtime, &version_metadata, &mut self.config, ctx);
+
+                // Single action button: once armed and the instance is generated (metadata
+                // available), drive the Java download + file sync so the chain ends in an
+                // automatic launch. Both calls are idempotent / no-op when already done.
+                if self.launch_state.wants_launch() {
+                    self.instance_sync_state.schedule_sync_if_needed(
+                        &self.runtime,
+                        version_metadata.clone(),
+                        false,
+                        &self.config,
+                        ctx,
+                    );
+                    self.java_state.schedule_download_if_needed(
+                        &self.runtime,
+                        &version_metadata,
+                        &mut self.config,
+                    );
+                }
             }
         }
 
@@ -365,20 +377,20 @@ impl LauncherApp {
                 );
                 match force_launch_result {
                     ForceLaunchResultSelect::ForceLaunch => {
-                        if let Some(version_metadata) =
-                            self.metadata_state.get_version_metadata(&self.config)
+                        // The button is now armed (wants_launch()). For a packwiz instance, kick
+                        // off provisioning (generate locally if missing / pack changed); the
+                        // armed sync + java scheduling above then carries it through to launch.
+                        // For a normal instance there's nothing to generate — the armed block
+                        // schedules its sync + java on the next frame.
+                        if let Some(selected) = self.get_selected_instance(&self.config)
+                            && packwiz_provision_state::is_packwiz(&selected)
                         {
-                            self.instance_sync_state.schedule_sync_if_needed(
+                            self.packwiz_provision_state.invalidate_all();
+                            self.packwiz_provision_state.maybe_start(
                                 &self.runtime,
-                                version_metadata.clone(),
-                                false,
                                 &self.config,
+                                &selected,
                                 ctx,
-                            );
-                            self.java_state.schedule_download_if_needed(
-                                &self.runtime,
-                                &version_metadata,
-                                &mut self.config,
                             );
                         }
                     }
