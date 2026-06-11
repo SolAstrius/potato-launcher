@@ -177,13 +177,16 @@ impl JavaState {
         self.settings_opened = false;
     }
 
+    /// Returns `true` on the frame a Java *download* finishes with an error, so the caller can
+    /// disarm the action button instead of re-scheduling the failing download every frame.
     pub fn update(
         &mut self,
         runtime: &Runtime,
         metadata: &CompleteVersionMetadata,
         config: &mut Config,
         ctx: &egui::Context,
-    ) {
+    ) -> bool {
+        let mut download_failed = false;
         if self.check_java_task.is_none() && self.status == JavaDownloadStatus::CheckingJava {
             self.set_check_java_task(runtime, metadata, config, ctx);
         }
@@ -232,13 +235,18 @@ impl JavaState {
                             path.to_string_lossy().to_string(),
                         );
                         config.save();
+                    } else {
+                        download_failed = true;
                     }
                 }
                 BackgroundTaskResult::Cancelled => {
                     self.status = JavaDownloadStatus::NotDownloaded;
+                    download_failed = true;
                 }
             }
         }
+
+        download_failed
     }
 
     fn is_download_needed(&self) -> bool {

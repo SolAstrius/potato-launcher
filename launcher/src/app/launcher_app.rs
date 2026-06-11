@@ -4,7 +4,7 @@ use eframe::egui;
 use tokio::runtime::Runtime;
 
 use super::auth_state::AuthState;
-use super::instance_sync_state::InstanceSyncState;
+use super::instance_sync_state::{InstanceSyncState, SyncUpdate};
 use super::java_state::JavaState;
 use super::launch_state::ForceLaunchResultSelect;
 use super::launch_state::LaunchState;
@@ -181,6 +181,20 @@ impl LauncherApp {
             self.set_metadata_task(ctx);
         }
 
+        // Re-check an already-generated packwiz instance against its pack on selection: cheap
+        // (one pack.toml GET, self-gated to once per session per instance via `checked`), and it
+        // regenerates only on a real index-hash change, reusing the cached loader. Without this,
+        // an instance that already synced once never notices upstream pack changes on the play
+        // path and the armed sync 404s on files the pack removed. Fresh descriptors are skipped
+        // here so their (heavy) first provision stays driven by the download button.
+        if let Some(selected) = self.get_selected_instance(&self.config)
+            && packwiz_provision_state::is_packwiz(&selected)
+            && !packwiz_provision_state::needs_provisioning(&selected)
+        {
+            self.packwiz_provision_state
+                .maybe_start(&self.runtime, &self.config, &selected, ctx);
+        }
+
         if let Some(version_info) = self.new_instance_state.take_new_instance() {
             self.runtime.block_on(
                 self.instance_storage
@@ -320,20 +334,34 @@ impl LauncherApp {
             }
 
             if let Some(version_metadata) = self.metadata_state.get_version_metadata(&self.config) {
-                if self.instance_sync_state.update() {
-                    self.runtime.block_on(
-                        self.instance_storage
-                            .mark_downloaded(&self.config, version_metadata.get_name()),
-                    );
+                match self.instance_sync_state.update() {
+                    SyncUpdate::Completed => {
+                        self.runtime.block_on(
+                            self.instance_storage
+                                .mark_downloaded(&self.config, version_metadata.get_name()),
+                        );
+                    }
+                    // A failed (or cancelled) sync is terminal for the armed flow: disarm so the
+                    // error is shown and the user retries deliberately, instead of the launch
+                    // flow rescheduling the same failing sync every frame.
+                    SyncUpdate::Failed => self.launch_state.disarm(),
+                    SyncUpdate::Pending => {}
                 }
 
-                self.java_state
-                    .update(&self.runtime, &version_metadata, &mut self.config, ctx);
+                let java_download_failed =
+                    self.java_state
+                        .update(&self.runtime, &version_metadata, &mut self.config, ctx);
+                if java_download_failed {
+                    self.launch_state.disarm();
+                }
 
                 // Single action button: once armed and the instance is generated (metadata
                 // available), drive the Java download + file sync so the chain ends in an
                 // automatic launch. Both calls are idempotent / no-op when already done.
-                if self.launch_state.wants_launch() {
+                // Wait while a packwiz (re)provision is in flight: syncing now would use the
+                // soon-to-be-replaced metadata and chase files the updated pack removed (a 404
+                // loop). Once provisioning lands, the metadata reloads and this proceeds clean.
+                if self.launch_state.wants_launch() && !self.packwiz_provision_state.is_working() {
                     self.instance_sync_state.schedule_sync_if_needed(
                         &self.runtime,
                         version_metadata.clone(),
@@ -367,9 +395,15 @@ impl LauncherApp {
 
                 let params = RenderUiParams {
                     online: !self.auth_state.offline(),
+                    // Also block launch while a packwiz pack re-check/regeneration is in flight:
+                    // a stale `UpToDate` instance is re-checked on select, and launching before
+                    // that lands could start the game on files the updated pack has changed. If
+                    // the re-check finds a change it flips the instance to Outdated and the flow
+                    // drops to the download branch (sync first), preserving stage order.
                     disabled: self.instance_sync_state.is_syncing()
                         || self.manifest_state.is_fetching()
-                        || self.metadata_state.is_getting(),
+                        || self.metadata_state.is_getting()
+                        || self.packwiz_provision_state.is_working(),
                 };
                 self.launch_state.render_ui(
                     &self.runtime,
@@ -380,15 +414,25 @@ impl LauncherApp {
                     params,
                 );
             } else {
-                let some_version_selected = self.get_selected_instance(&self.config).is_some();
+                let selected = self.get_selected_instance(&self.config);
+                let some_version_selected = selected.is_some();
                 let have_some_auth_data = self.auth_state.get_auth_data(&self.config).is_some();
+                // A fresh packwiz descriptor has no metadata or Java yet — provisioning, which
+                // this very button drives, is what generates them. Gating on metadata/Java
+                // readiness here deadlocks: `checking_java()` stays true forever because the
+                // Java check needs metadata that only provisioning produces. So skip those two
+                // gates while the instance still needs provisioning.
+                let needs_provisioning = selected
+                    .as_ref()
+                    .is_some_and(packwiz_provision_state::needs_provisioning);
+                let readiness_blocked = !needs_provisioning
+                    && (self.metadata_state.is_getting() || self.java_state.checking_java());
                 let force_launch_result = self.launch_state.render_download_ui(
                     ui,
                     &mut self.config,
                     self.instance_sync_state.is_syncing()
                         || self.manifest_state.is_fetching()
-                        || self.metadata_state.is_getting()
-                        || self.java_state.checking_java()
+                        || readiness_blocked
                         || !some_version_selected
                         || !have_some_auth_data,
                 );

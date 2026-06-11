@@ -115,6 +115,13 @@ impl LaunchState {
         self.force_launch || self.launch_from_start
     }
 
+    /// Cancel the armed action-button flow. Called when a step it drives (sync, Java download)
+    /// fails terminally, so the failure is surfaced instead of being retried every frame.
+    pub fn disarm(&mut self) {
+        self.force_launch = false;
+        self.launch_from_start = false;
+    }
+
     pub fn update(&mut self, runtime: &Runtime, config: &Config) {
         match self.watcher_handle.take_if(|handle| handle.is_finished()) {
             None => {}

@@ -23,6 +23,14 @@ enum InstanceSyncStatus {
     SyncErrorOffline,
 }
 
+/// Outcome of polling the in-flight sync task this frame. `Failed` lets the caller disarm the
+/// action button on error instead of letting the armed launch flow retry in a tight loop.
+pub enum SyncUpdate {
+    Pending,
+    Completed,
+    Failed,
+}
+
 fn sync_instance(
     runtime: &Runtime,
     instance_metadata: Arc<CompleteVersionMetadata>,
@@ -80,7 +88,7 @@ impl InstanceSyncState {
         }
     }
 
-    pub fn update(&mut self) -> bool {
+    pub fn update(&mut self) -> SyncUpdate {
         if let Some(task) = self.instance_sync_task.as_ref()
             && task.has_result()
         {
@@ -102,15 +110,20 @@ impl InstanceSyncState {
                 }
                 BackgroundTaskResult::Cancelled => {
                     self.status = InstanceSyncStatus::NotSynced;
+                    // Treat a cancel as terminal for the armed launch flow too, so it doesn't
+                    // immediately reschedule the sync the user just cancelled.
+                    return SyncUpdate::Failed;
                 }
             }
 
-            if self.status == InstanceSyncStatus::Synced {
-                return true;
-            }
+            return if self.status == InstanceSyncStatus::Synced {
+                SyncUpdate::Completed
+            } else {
+                SyncUpdate::Failed
+            };
         }
 
-        false
+        SyncUpdate::Pending
     }
 
     pub fn reset_status(&mut self) {
@@ -151,6 +164,13 @@ impl InstanceSyncState {
         config: &Config,
         ctx: &egui::Context,
     ) {
+        // A sync is already running: do NOT cancel-and-restart it. The armed launch flow calls
+        // this every frame, and `status` only leaves `NotSynced`/`SyncError` once a sync
+        // *completes* — so without this guard each frame would restart the sync from the check
+        // phase and it would never finish.
+        if self.instance_sync_task.is_some() {
+            return;
+        }
         match &self.status {
             InstanceSyncStatus::NotSynced
             | InstanceSyncStatus::SyncError
@@ -261,7 +281,8 @@ impl InstanceSyncState {
 
                     if ui
                         .add_enabled(
-                            selected_version_metadata.is_some(),
+                            selected_version_metadata.is_some()
+                                && self.instance_sync_task.is_none(),
                             egui::Button::new(LangMessage::SyncInstance.to_string(lang)),
                         )
                         .clicked()
