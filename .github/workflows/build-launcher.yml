@@ -194,6 +194,31 @@ jobs:
           name: launcher-${{ matrix.os }}
           path: build/*
 
+  release:
+    name: Publish rolling launcher release
+    needs: binaries
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download all launcher artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: launcher-*
+          merge-multiple: true
+          path: dist
+      - name: List artifacts
+        run: ls -la dist
+      - name: Publish/update launcher-latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: launcher-latest
+          name: Launcher (latest)
+          prerelease: true
+          fail_on_unmatched_files: false
+          files: dist/*
+
   flatpak:
     name: Build Flatpak package
     runs-on: ubuntu-latest
