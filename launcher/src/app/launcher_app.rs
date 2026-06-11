@@ -246,6 +246,13 @@ impl LauncherApp {
                 ui.label(
                     LangMessage::PackwizInstanceError(e.to_string()).to_string(self.config.lang),
                 );
+            } else if self
+                .get_selected_instance(&self.config)
+                .is_some_and(|instance| packwiz_provision_state::needs_provisioning(&instance))
+            {
+                // Metadata for an unprovisioned packwiz descriptor is deferred by design;
+                // "No metadata" here reads as an error when the instance is simply not
+                // downloaded yet.
             } else if !self.metadata_state.render_status(ui, &self.config) {
                 self.instance_sync_state.render_status(ui, &self.config);
             }
@@ -261,8 +268,18 @@ impl LauncherApp {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                 let version_metadata = self.metadata_state.get_version_metadata(&self.config);
-                let auth_backend =
-                    version_metadata.and_then(|metadata| metadata.get_auth_backend().cloned());
+                let auth_backend = version_metadata
+                    .and_then(|metadata| metadata.get_auth_backend().cloned())
+                    .or_else(|| {
+                        // An unprovisioned packwiz descriptor has no metadata yet, but the
+                        // manifest already names the auth backend; without this a fresh install
+                        // can't log in, and the launch button that drives provisioning stays
+                        // disabled without auth data.
+                        self.get_selected_instance(&self.config)
+                            .and_then(|instance| {
+                                packwiz_provision_state::auth_backend_of(&instance)
+                            })
+                    });
                 self.auth_state.render_ui(
                     ui,
                     &mut self.config,

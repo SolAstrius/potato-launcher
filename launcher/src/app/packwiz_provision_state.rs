@@ -74,6 +74,12 @@ fn server_overrides(instance: &LocalInstance) -> (Option<AuthBackend>, Option<St
     (auth, xmx)
 }
 
+/// Auth backend for a packwiz instance, available even before provisioning: the manifest
+/// descriptor carries it, so a fresh install can log in while metadata is still deferred.
+pub fn auth_backend_of(instance: &LocalInstance) -> Option<AuthBackend> {
+    server_overrides(instance).0
+}
+
 /// True for a packwiz instance that has not been generated locally yet (manifest descriptor).
 /// Its `version_info` has placeholder URLs, so metadata must not be loaded until provisioned.
 pub fn needs_provisioning(instance: &LocalInstance) -> bool {
