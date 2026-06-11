@@ -35,6 +35,8 @@ jobs:
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Install configure.py dependencies
         run: |
@@ -81,12 +83,12 @@ jobs:
           python packaging/configure.py
           mkdir -p build
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            cargo build --bin launcher --profile release-lto
-            mv "target/release-lto/launcher.exe" "build/${LAUNCHER_NAME}.exe"
+            cargo build --bin launcher --release
+            mv "target/release/launcher.exe" "build/${LAUNCHER_NAME}.exe"
             echo "$VERSION" > build/version_windows.txt
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            cargo build --bin launcher --profile release-lto
-            mv "target/release-lto/launcher" "build/${LOWER_LAUNCHER_NAME}"
+            cargo build --bin launcher --release
+            mv "target/release/launcher" "build/${LOWER_LAUNCHER_NAME}"
             echo "$VERSION" > build/version_linux.txt
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
             which cargo-bundle || cargo install cargo-bundle
@@ -94,14 +96,14 @@ jobs:
 
             # Build Intel binary directly (with older deployment target)
             export MACOSX_DEPLOYMENT_TARGET=10.12
-            cargo build --bin launcher --profile release-lto --target x86_64-apple-darwin
+            cargo build --bin launcher --release --target x86_64-apple-darwin
 
             # Build ARM binary as part of bundle (with newer deployment target)
             export MACOSX_DEPLOYMENT_TARGET=11.0
-            cargo bundle --package launcher --bin launcher --profile release-lto --target aarch64-apple-darwin
+            cargo bundle --package launcher --bin launcher --release --target aarch64-apple-darwin
 
             mkdir -p app
-            mv "target/aarch64-apple-darwin/release-lto/bundle/osx/$LAUNCHER_NAME.app" "app/$LAUNCHER_NAME.app"
+            mv "target/aarch64-apple-darwin/release/bundle/osx/$LAUNCHER_NAME.app" "app/$LAUNCHER_NAME.app"
 
             # Update permission descriptions (required for simple voice chat and some other mods)
             plutil -replace NSCameraUsageDescription \
@@ -119,7 +121,7 @@ jobs:
 
             # Create universal binary
             lipo -create -output "app/$LAUNCHER_NAME.app/Contents/MacOS/launcher" \
-              "target/x86_64-apple-darwin/release-lto/launcher" \
+              "target/x86_64-apple-darwin/release/launcher" \
               "app/$LAUNCHER_NAME.app/Contents/MacOS/launcher"
 
             codesign --force --deep --sign - "app/$LAUNCHER_NAME.app"
@@ -155,7 +157,7 @@ jobs:
 
   release:
     name: Publish rolling launcher release
-    needs: binaries
+    needs: [binaries, flatpak]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     permissions:
@@ -181,6 +183,9 @@ jobs:
   flatpak:
     name: Build Flatpak package
     runs-on: ubuntu-latest
+    # Don't let a flaky Flatpak build block the launcher release; it's an extra download, not
+    # part of the self-update path.
+    continue-on-error: true
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     container:
       image: ghcr.io/andyholmes/flatter/freedesktop:24.08
@@ -239,3 +244,17 @@ jobs:
           arch: x86_64
           gpg-sign: ${{ steps.gpg.outputs.fingerprint }}
           upload-bundles: true
+
+      - name: Stage flatpak bundle for release
+        run: |
+          f="$(find . -maxdepth 4 -name '*.flatpak' | head -n 1)"
+          if [ -z "$f" ]; then echo "no .flatpak produced"; exit 1; fi
+          mkdir -p build
+          cp "$f" "build/tree_smp.flatpak"
+          ls -la build
+
+      - name: Upload flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-flatpak
+          path: build/tree_smp.flatpak

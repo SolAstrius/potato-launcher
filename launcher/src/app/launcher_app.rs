@@ -249,7 +249,9 @@ impl LauncherApp {
             if self.packwiz_provision_state.is_working() {
                 ui.label(LangMessage::PackwizProvisioning.to_string(self.config.lang));
             } else if let Some(e) = self.packwiz_provision_state.last_error() {
-                ui.label(LangMessage::PackwizInstanceError(e.to_string()).to_string(self.config.lang));
+                ui.label(
+                    LangMessage::PackwizInstanceError(e.to_string()).to_string(self.config.lang),
+                );
             } else if !self.metadata_state.render_status(ui, &self.config) {
                 self.instance_sync_state.render_status(ui, &self.config);
             }

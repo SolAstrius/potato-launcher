@@ -32,8 +32,8 @@ modules:
         # USE_NATIVE_GLFW_DEFAULT: "true"
     build-commands:
       - cargo --offline fetch --manifest-path Cargo.toml --verbose
-      - cargo --offline build --profile release-lto --bin launcher
-      - install -Dm755 ./target/release-lto/launcher /app/bin/launcher
+      - cargo --offline build --release --bin launcher
+      - install -Dm755 ./target/release/launcher /app/bin/launcher
     sources:
       - type: dir
         path: ../../

@@ -214,7 +214,10 @@ version = "7nHK7hMg"
 "#,
         )
         .unwrap();
-        assert_eq!(meta.download.url.as_deref(), Some("https://mc.sol.moe/pack/libs/ffapi.jar"));
+        assert_eq!(
+            meta.download.url.as_deref(),
+            Some("https://mc.sol.moe/pack/libs/ffapi.jar")
+        );
     }
 
     #[test]

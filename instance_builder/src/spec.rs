@@ -160,13 +160,17 @@ impl Spec {
 
             // Packwiz instance: emit a descriptor entry; the client generates locally.
             if let Some(packwiz_url) = &version.packwiz_url {
-                info!("Adding packwiz instance {} -> {}", version.name, packwiz_url);
-                let version_info = shared::version::version_manifest::VersionInfo::packwiz_descriptor(
-                    version.name.clone(),
-                    packwiz_url.clone(),
-                    version.auth_backend.clone(),
-                    version.recommended_xmx.clone(),
+                info!(
+                    "Adding packwiz instance {} -> {}",
+                    version.name, packwiz_url
                 );
+                let version_info =
+                    shared::version::version_manifest::VersionInfo::packwiz_descriptor(
+                        version.name.clone(),
+                        packwiz_url.clone(),
+                        version.auth_backend.clone(),
+                        version.recommended_xmx.clone(),
+                    );
                 version_manifest
                     .versions
                     .retain(|v| v.get_name() != version_info.get_name());

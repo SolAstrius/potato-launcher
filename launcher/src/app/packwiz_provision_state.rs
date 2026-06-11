@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use log::{error, info};
-use shared::packwiz::{fetch_index_hash, generate_packwiz_instance, PackwizInstance};
+use shared::packwiz::{PackwizInstance, fetch_index_hash, generate_packwiz_instance};
 use shared::utils::is_connect_error;
 use shared::version::extra_version_metadata::AuthBackend;
 use tokio::runtime::Runtime;
@@ -134,7 +134,8 @@ impl PackwizProvisionState {
             let outcome = async {
                 match fetch_index_hash(&task_pack_url).await {
                     Ok(current_hash) => {
-                        if already_generated && stored_hash.as_deref() == Some(current_hash.as_str())
+                        if already_generated
+                            && stored_hash.as_deref() == Some(current_hash.as_str())
                         {
                             return Outcome::UpToDate;
                         }

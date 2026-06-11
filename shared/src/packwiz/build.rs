@@ -42,9 +42,7 @@ fn build_objects(
         if entry.metafile {
             continue;
         }
-        let algo = map_hash_format(
-            entry.hash_format.as_deref().unwrap_or(&index.hash_format),
-        )?;
+        let algo = map_hash_format(entry.hash_format.as_deref().unwrap_or(&index.hash_format))?;
         objects.push(Object {
             path: entry.file.clone(),
             sha1: entry.hash.clone(),
@@ -294,11 +292,21 @@ mod tests {
         let metafiles = vec![
             (
                 "mods/sodium.pw.toml".to_string(),
-                meta("sodium.jar", Side::Client, Some("https://cdn/sodium.jar"), None),
+                meta(
+                    "sodium.jar",
+                    Side::Client,
+                    Some("https://cdn/sodium.jar"),
+                    None,
+                ),
             ),
             (
                 "mods/serverthing.pw.toml".to_string(),
-                meta("serverthing.jar", Side::Server, Some("https://cdn/st.jar"), None),
+                meta(
+                    "serverthing.jar",
+                    Side::Server,
+                    Some("https://cdn/st.jar"),
+                    None,
+                ),
             ),
         ];
 

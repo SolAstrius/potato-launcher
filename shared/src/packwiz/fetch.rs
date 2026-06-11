@@ -5,7 +5,10 @@ use super::model::{IndexToml, Metafile, PackToml};
 /// The parent "directory" of the pack.toml URL, without a trailing slash.
 /// `https://host/pack/pack.toml` -> `https://host/pack`. A query string, if any, is dropped.
 pub fn pack_base_url(pack_toml_url: &str) -> String {
-    let without_query = pack_toml_url.split(['?', '#']).next().unwrap_or(pack_toml_url);
+    let without_query = pack_toml_url
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(pack_toml_url);
     match without_query.rsplit_once('/') {
         Some((base, _file)) => base.to_string(),
         None => without_query.to_string(),
@@ -108,7 +111,13 @@ mod tests {
 
     #[test]
     fn join_handles_slashes() {
-        assert_eq!(join_url("https://h/p", "config/x.json"), "https://h/p/config/x.json");
-        assert_eq!(join_url("https://h/p/", "/config/x.json"), "https://h/p/config/x.json");
+        assert_eq!(
+            join_url("https://h/p", "config/x.json"),
+            "https://h/p/config/x.json"
+        );
+        assert_eq!(
+            join_url("https://h/p/", "/config/x.json"),
+            "https://h/p/config/x.json"
+        );
     }
 }
