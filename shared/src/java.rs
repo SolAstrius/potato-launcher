@@ -34,6 +34,31 @@ const JAVA_BINARY_NAME: &str = "java.exe";
 #[cfg(not(target_os = "windows"))]
 const JAVA_BINARY_NAME: &str = "java";
 
+/// Path to the `java` binary inside an extracted per-version runtime directory.
+///
+/// On macOS, Azul Zulu archives use the macOS bundle layout
+/// (`<version>/Contents/Home/bin/java`) rather than the flat `<version>/bin/java`
+/// used on Linux/Windows. Prefer the bundle path when present, falling back to the
+/// flat layout for any non-bundled package.
+#[cfg(target_os = "macos")]
+fn java_bin_path(version_dir: &Path) -> PathBuf {
+    let bundled = version_dir
+        .join("Contents")
+        .join("Home")
+        .join("bin")
+        .join(JAVA_BINARY_NAME);
+    if bundled.exists() {
+        bundled
+    } else {
+        version_dir.join("bin").join(JAVA_BINARY_NAME)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn java_bin_path(version_dir: &Path) -> PathBuf {
+    version_dir.join("bin").join(JAVA_BINARY_NAME)
+}
+
 async fn get_installation(path: &Path) -> Option<JavaInstallation> {
     let path = if path.is_file() {
         path.to_path_buf()
@@ -343,7 +368,7 @@ pub async fn download_java<M>(
             .ok_or(JavaDownloadError::NoFileExtensionInURL)?;
         fs::rename(java_dir.join(filename), &target_dir)?;
 
-        let java_path = target_dir.join("bin").join(JAVA_BINARY_NAME);
+        let java_path = java_bin_path(&target_dir);
         if !check_java(required_version, &java_path).await {
             return Err(JavaDownloadError::InvalidDownloadedJava.into());
         }
@@ -363,8 +388,7 @@ pub async fn get_java(required_version: &str, java_dir: &Path) -> Option<JavaIns
     }
 
     let java_dir = java_dir.join(required_version);
-    if let Some(installation) = get_installation(&java_dir.join("bin").join(JAVA_BINARY_NAME)).await
-    {
+    if let Some(installation) = get_installation(&java_bin_path(&java_dir)).await {
         installations.push(installation);
     }
 
