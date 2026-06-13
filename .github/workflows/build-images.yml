@@ -51,7 +51,7 @@ jobs:
           if [ -n "${{ vars.VITE_GITHUB_URL }}" ]; then
             echo "VITE_GITHUB_URL=${{ vars.VITE_GITHUB_URL }}" >> "$GITHUB_ENV"
           else
-            echo "VITE_GITHUB_URL=https://github.com/Petr1Furious/potato-launcher" >> "$GITHUB_ENV"
+            echo "VITE_GITHUB_URL=https://github.com/SolAstrius/potato-launcher" >> "$GITHUB_ENV"
           fi
 
       - name: Set up Docker Buildx

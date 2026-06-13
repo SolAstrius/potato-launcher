@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/petr1furious/potato-launcher-backend:latest
+    image: ghcr.io/solastrius/potato-launcher-backend:latest
     container_name: ${CONTAINER_NAME_PREFIX:-potato-launcher}-backend
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:
@@ -33,7 +33,7 @@ services:
       - ./state/filebrowser-db:/database
 
   nginx:
-    image: ghcr.io/petr1furious/potato-launcher-frontend:latest
+    image: ghcr.io/solastrius/potato-launcher-frontend:latest
     container_name: ${CONTAINER_NAME_PREFIX:-potato-launcher}-nginx
     depends_on:
       - backend

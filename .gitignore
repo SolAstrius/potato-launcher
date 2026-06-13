@@ -34,6 +34,10 @@ gpg/
 # backend
 out/
 
+# local macOS launcher build output (cargo-bundle + packaging chain)
+/app/
+/build/
+
 .env*
 generated/
 workdir/
