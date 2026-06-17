@@ -147,6 +147,38 @@ fn loader_generator(
 /// Writes all base + extra metadata into `work_dir` (the launcher data dir) so that
 /// [`crate::version::version_metadata::VersionMetadata::read_local`] and the `"empty-url"`
 /// placeholder URLs from [`get_version_info`] are never fetched at sync time.
+/// Split the resolved pack files into include rules. `mods/` is fully pack-controlled, so it
+/// gets `delete_extra:true` to prune jars no longer in the pack — without this, renamed/removed
+/// jars accumulate, and a stale Sinytra Connector jar (picked up as a modlauncher transformation
+/// service, which has no version dedup) silently wins over the new one, stranding the client on
+/// the old loader. Everything else stays rooted at the minecraft dir with `delete_extra:false`
+/// so user files (saves, options.txt, logs, edited configs, …) are never deleted.
+fn split_includes(objects: Vec<Object>) -> Vec<Include> {
+    let is_under_mods = |p: &str| {
+        let p = p.replace('\\', "/");
+        p == "mods" || p.starts_with("mods/")
+    };
+    let (mods_objects, other_objects): (Vec<_>, Vec<_>) =
+        objects.into_iter().partition(|o| is_under_mods(&o.path));
+
+    vec![
+        Include {
+            path: "mods".to_string(),
+            overwrite: true,
+            delete_extra: true,
+            recursive: true,
+            objects: mods_objects,
+        },
+        Include {
+            path: ".".to_string(),
+            overwrite: true,
+            delete_extra: false,
+            recursive: true,
+            objects: other_objects,
+        },
+    ]
+}
+
 pub async fn generate_packwiz_instance(
     work_dir: &Path,
     pack_url: &str,
@@ -198,17 +230,9 @@ pub async fn generate_packwiz_instance(
     let generator = loader_generator(instance_name, vanilla_info, &pack.versions)?;
     let generator_result = generator.generate(work_dir).await?;
 
-    // One include rooted at the minecraft dir. delete_extra:false so user files (saves,
-    // options.txt, logs, …) under the same dir are never deleted.
     let extra_metadata = ExtraVersionMetadata {
         auth_backend,
-        include: vec![Include {
-            path: ".".to_string(),
-            overwrite: true,
-            delete_extra: false,
-            recursive: true,
-            objects,
-        }],
+        include: split_includes(objects),
         resources_url_base: None,
         extra_forge_libs: vec![],
         recommended_xmx,
@@ -319,6 +343,36 @@ mod tests {
         assert_eq!(objects[1].path, "mods/sodium.jar");
         assert_eq!(objects[1].algo, HashAlgo::Sha512);
         assert_eq!(objects[1].url, "https://cdn/sodium.jar");
+    }
+
+    #[test]
+    fn split_includes_prunes_mods_only() {
+        let obj = |path: &str| Object {
+            path: path.to_string(),
+            sha1: "ff".to_string(),
+            algo: HashAlgo::Sha256,
+            url: format!("https://h/{path}"),
+        };
+        let includes = split_includes(vec![
+            obj("mods/connector.jar"),
+            obj("mods/owo.jar"),
+            obj("config/foo.json"),
+            obj("options.txt"),
+        ]);
+
+        let mods = &includes[0];
+        assert_eq!(mods.path, "mods");
+        assert!(mods.overwrite && mods.delete_extra, "mods/ must prune");
+        let mut mod_paths: Vec<_> = mods.objects.iter().map(|o| o.path.as_str()).collect();
+        mod_paths.sort();
+        assert_eq!(mod_paths, ["mods/connector.jar", "mods/owo.jar"]);
+
+        let rest = &includes[1];
+        assert_eq!(rest.path, ".");
+        assert!(rest.overwrite && !rest.delete_extra, "user files must survive");
+        let mut rest_paths: Vec<_> = rest.objects.iter().map(|o| o.path.as_str()).collect();
+        rest_paths.sort();
+        assert_eq!(rest_paths, ["config/foo.json", "options.txt"]);
     }
 
     #[test]
