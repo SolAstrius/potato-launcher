@@ -109,8 +109,9 @@ impl LauncherApp {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::central_panel(&ctx.style())
-                    .outer_margin(egui::epaint::MarginF32::symmetric(150.0, 100.0))
-                    .inner_margin(egui::epaint::MarginF32::same(30.0))
+                    .outer_margin(egui::epaint::MarginF32::symmetric(90.0, 60.0))
+                    .inner_margin(egui::epaint::MarginF32::same(24.0))
+                    .fill(super::theme::PANEL)
                     .stroke(ctx.style().visuals.widgets.noninteractive.bg_stroke)
                     .corner_radius(egui::CornerRadius::same(10)),
             )

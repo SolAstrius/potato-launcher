@@ -12,4 +12,5 @@ mod new_instance_state;
 mod packwiz_provision_state;
 pub mod progress_bar;
 mod settings;
+pub mod theme;
 pub mod unified_app;

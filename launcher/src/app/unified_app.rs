@@ -53,6 +53,7 @@ pub fn run_gui(config: Config, launch: bool) {
         native_options,
         Box::new(move |cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            crate::app::theme::install(&cc.egui_ctx);
             Ok(Box::new(UnifiedApp::new(
                 config,
                 &cc.egui_ctx,
